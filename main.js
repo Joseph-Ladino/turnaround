@@ -1,158 +1,113 @@
-const dsp = document.getElementById("display");
-const ctx = dsp.getContext("2d");
-var hnd = 0;
-var glitches = [];
+var width = document.body.offsetWidth;
+var height = document.body.offsetHeight;
 
-var font = "roboto";
-var text = "turn back";
-var nextText = text;
+var centEl = document.getElementById("center"); // textEl parent
+var textEl = document.getElementById("text"); // actual text element
+var blnkEl = document.getElementById("cursor"); // blink cursor
 
-var offsetX = 0;
-var offsetY = 0;
-var targetWidth = 0;
-var fixedFontSize = 0;
+var hnd = 0; // main loop handle
+var text = "turn back"; // text to be shown
 
-var lastBlink = 0;
-var blinkDurOn = 530;
-var blinkDurOff = 530;
-var charSpeed = 150;
+var trimChars = 0; // num of characters to delete
+var addChars = ""; // chars to add to the current text value
+var lastCharMod = 0; // time of last adding/removing of character
 
-var deleting = false;
-var deleteUntil = 10;
-var lastDelete = 0;
+var lastBlink = 0; // time of last blink
+var blinkSpeed = 530; // time in ms the cursor takes to toggle from on and off
+var charSpeed = 235; // time in ms between adding/removing a character
 
-var typing = false;
-var toAppend = "";
-var lastType = 0;
+// returns font size required to fit the text in the given width
+function calcFontSize(text = text, font = "default", compressAmount = 0.95, targetWidth = width) {
+	let ratio = 0;
+	let temp = document.createElement("span");
 
-class glitch {
-	constructor() {
-		this.font = "roboto";
-		this.text = "turn back";
+	temp.innerText = text;
+	temp.id = "sizeOlicious";
+	temp.style.fontSize = "200px";
+	temp.style.fontFamily = font;
+
+	document.body.appendChild(temp);
+	ratio = (200 * compressAmount) / temp.offsetWidth;
+	document.body.removeChild(temp);
+
+	return ratio * targetWidth;
+}
+
+// processes deleting or adding chars one by one
+function addRemoveChars(now) {
+	let elapsed = now - lastCharMod;
+
+	if (elapsed < charSpeed) return;
+
+	if (trimChars > 0) {
+		text = text.slice(0, text.length - 1);
+
+		lastCharMod = now;
+		trimChars--;
+	} else if (addChars.length > 0) {
+		text += addChars[0];
+
+		lastCharMod = now;
+		addChars = addChars.slice(1);
 	}
 }
 
-function getTextDimensions(text, style) {
-	let out = { width: ctx.measureText(text).width, height: 0 };
-	let test = document.createElement("span");
-	test.innerText = "M";
-	test.setAttribute("style", style);
+// returns index where the strings diverge, i.e. 2 for "cop" and "cob"
+function indexOfChange(str1, str2) {
+	let minLength = Math.min(str1.length, str2.length);
+	for (let i = 0; i < minLength; i++) if (str1[i] != str2[i]) return i;
 
-	out.height = test.offsetHeight;
-
-	return out;
+	return minLength;
 }
 
-function calcWidthRatio(text, font) {
-	let tFont = ctx.font;
-	let out = 0;
+// set blink cursor
+// -1 for toggle, 0 for off, 1 for on
+function setBlink(option) {
+	let blinkOff = option == -1 ? blnkEl.classList.contains("blinkOff") : option > 0;
 
-	ctx.font = `200px ${font}`;
-	out = 200 / ctx.measureText(text).width;
-	ctx.font = tFont;
-
-	return out;
+	if (blinkOff) blnkEl.classList.remove("blinkOff");
+	else blnkEl.classList.add("blinkOff");
 }
 
-function updateFFS(font) {
-	fixedFontSize = calcWidthRatio(text + "|", font) * targetWidth;
+function changeDisplayText(newText) {
+	if(text == newText) return;
+
+	let ioc = indexOfChange(text, newText);
+	let delCount = text.length - ioc;
+	
+	trimChars = delCount < 0 ? 0 : delCount;
+	addChars = newText.slice(ioc);
 }
 
-function indexOfChange(text1, text2) {
-	let minLen = Math.min(text1.length, text2.length);
+function updateDisplayedText(now) {
+	let elapsed = now - lastBlink;
 
-	for (let i = 0; i < minLen; i++) if (text1[i] != text2[i]) return i;
-
-	return minLen - 1;
-}
-
-function tryDelete(ts) {
-	if (deleting && ts - lastDelete > charSpeed) {
-		if (text.length - 1 > deleteUntil) text = text.slice(0, text.length - 1);
-		else deleting = false;
-
-		lastDelete = ts;
+	if (elapsed >= blinkSpeed && trimChars == 0 && addChars.length == 0) {
+		setBlink(-1);
+		lastBlink = now;
 	}
+
+	if (text == textEl.value) return;
+
+	textEl.innerText = text;
 }
 
-function tryAppend(ts) {
-	if (typing && ts - lastType > charSpeed) {
-		if (toAppend.length > 0) {
-			text += toAppend[0];
-			toAppend = toAppend.slice(1);
-		} else typing = false;
-
-		lastType = ts;
-	}
-}
-
-function tryChangeText(ts) {
-	tryDelete(ts);
-	if (!deleting) tryAppend(ts);
-}
-
-function queueChangeText(_text) {
-	if (text == _text) return;
-
-	let ioc = indexOfChange(text, _text);
-    let minLen = Math.min(text.length, _text.length);
-
-	deleting = true;
-	deleteUntil = ioc; 
-
-    if (text.slice(0, ioc + 1) == _text) return;
-    
-    let mod = _text.length > text.length && ioc == minLen - 1;
-
-    typing = true;
-    deleteUntil -= !mod;
-    toAppend = _text.slice(ioc + mod);
-}
-
-let time = 0;
-
-function loop(ts) {
+function loop(ms) {
 	hnd = requestAnimationFrame(loop);
-	time = ts;
 
-	// fill background
-	ctx.fillStyle = "#FAFAFA";
-	// ctx.fillStyle = "#B5001E";
-	ctx.fillRect(0, 0, dsp.width, dsp.height);
+	addRemoveChars(ms);
 
-	// blinks the | character bc why not
-	let tText;
-	let blinkDelta = ts - lastBlink;
-	if (blinkDelta > blinkDurOff + blinkDurOn) lastBlink = ts;
-	tText = blinkDelta > blinkDurOff || typing || deleting ? text + "|" : text;
-
-	tryChangeText(ts);
-
-	let fontStyle = `${fixedFontSize}px ${font}`;
-
-	ctx.font = fontStyle;
-	ctx.fillStyle = "#000";
-	// ctx.fillStyle = "#141414";
-
-	ctx.textBaseline = "middle";
-	ctx.fillText(tText, offsetX, offsetY);
-}
-
-function start() {
-	hnd = requestAnimationFrame(loop);
-	window.onresize = resize;
+	updateDisplayedText(ms);
 }
 
 function resize() {
-	dsp.width = document.body.offsetWidth;
-	dsp.height = document.body.offsetHeight;
+	width = document.body.offsetWidth;
+	height = document.body.offsetHeight;
 
-	targetWidth = dsp.width * 0.95;
-	offsetX = (dsp.width - targetWidth) * 0.5;
-	offsetY = dsp.height * 0.5;
-
-	if(!typing && !deleting) updateFFS(font);
+	centEl.style.fontSize = `${calcFontSize(text + "|", "default", 0.9)}px`;
 }
 
+hnd = requestAnimationFrame(loop);
 resize();
-start();
+
+window.onresize = resize;
