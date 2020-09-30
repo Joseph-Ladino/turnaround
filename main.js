@@ -14,7 +14,7 @@ var lastCharMod = 0; // time of last adding/removing of character
 
 var lastBlink = 0; // time of last blink
 var blinkSpeed = 530; // time in ms the cursor takes to toggle from on and off
-var charSpeed = 235; // time in ms between adding/removing a character
+var charSpeed = 135; // time in ms between adding/removing a character
 
 // returns font size required to fit the text in the given width
 function calcFontSize(text = text, font = "default", compressAmount = 0.95, targetWidth = width) {
@@ -70,11 +70,11 @@ function setBlink(option) {
 }
 
 function changeDisplayText(newText) {
-	if(text == newText) return;
+	if (text == newText) return;
 
 	let ioc = indexOfChange(text, newText);
 	let delCount = text.length - ioc;
-	
+
 	trimChars = delCount < 0 ? 0 : delCount;
 	addChars = newText.slice(ioc);
 }
@@ -82,7 +82,8 @@ function changeDisplayText(newText) {
 function updateDisplayedText(now) {
 	let elapsed = now - lastBlink;
 
-	if (elapsed >= blinkSpeed && trimChars == 0 && addChars.length == 0) {
+	if (trimChars > 0 || addChars.length > 0) setBlink(1);
+	else if (elapsed >= blinkSpeed) {
 		setBlink(-1);
 		lastBlink = now;
 	}
@@ -92,12 +93,47 @@ function updateDisplayedText(now) {
 	textEl.innerText = text;
 }
 
+let phrases = [
+	"turn back",
+	"turn away",
+	"look behind you",
+	"god please stop",
+	"save me",
+	"stop my pain",
+	"over your shoulder",
+	"he's in your blindspot",
+	"eye see you",
+	"tell my grandpa I say hi",
+	"it's rude to ignore him",
+	"he sees you",
+	"dont turn off the lights",
+	"he likes it when you sleep late",
+	"listen for the whispers",
+	"the kids are laughing, not a tear in sight",
+	"dont pretend to be asleep",
+	"your night light changes nothing",
+	"check the corners",
+	"he sees through the shadows",
+	"country road, your new home, in the ditch, covered in shit",
+];
+
+var lastPhraseChange = 0;
+var waitTime = 5000;
+
 function loop(ms) {
 	hnd = requestAnimationFrame(loop);
 
 	addRemoveChars(ms);
 
 	updateDisplayedText(ms);
+
+	if (text.length > 4) resize();
+
+	if (ms - lastPhraseChange >= waitTime) {
+		changeDisplayText(phrases[Math.floor(Math.random() * phrases.length)]);
+		lastPhraseChange = ms;
+		waitTime = (trimChars + addChars.length) * charSpeed + 1500 + Math.round(Math.random() * 20000);
+	}
 }
 
 function resize() {
